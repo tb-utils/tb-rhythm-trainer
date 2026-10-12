@@ -115,6 +115,8 @@ Example: NOTES=`C4 D4 E4 ...`, separator=`:`, suffix=`7` → `[C4:7]`.
 
 The current settings are auto-saved in the browser's `localStorage`. The selected Preset and Preset name are also auto-saved and restored when the app is opened again. Multiple named presets can be stored separately. Selecting a preset loads it immediately.
 
+Settings and presets stored in `localStorage` are shared between tabs of this app in the same browser profile. If they are changed in multiple tabs at the same time, later changes may overwrite earlier ones.
+
 Preset data includes BPM, Subdivision, Pattern, Group, Rest probability, Chord separator, NOTES, and CHORD_SUFFIXES.
 
 Presets can also be exported and imported as JSON.
