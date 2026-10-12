@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TB Rhythm Trainer</title>
+<style>
+:root{color-scheme:dark;--bg:#111;--panel:#1b1b1b;--text:#eee;--muted:#aaa;--border:#444;--play:#273327;--next:#2d2d3a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:auto;padding:18px}h1{font-size:1.35rem;margin:0 0 6px}.muted{color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.wide{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+@media(max-width:760px){.wide{grid-template-columns:1fr}}
+label{display:block;color:var(--muted);font-size:.86rem;margin-bottom:4px}input,textarea,select,button{font:inherit}
+input,textarea{width:100%;background:#0d0d0d;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px}
+textarea{min-height:145px;font-family:ui-monospace,Consolas,monospace;resize:vertical}
+.note{font-size:.8rem;color:var(--muted);margin-top:4px}.help{font-size:.82rem;color:#bbb;line-height:1.45;margin-top:6px;background:#151515;border-radius:5px;padding:7px}.meta{font-size:.86rem;color:var(--muted);margin:4px 0 10px}.footer{margin-top:14px;padding:10px 2px;color:var(--muted);font-size:.86rem;border-top:1px solid #333}.buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.preset-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(180px,1fr);gap:10px;margin-top:12px}.preset-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.preset-actions button{white-space:nowrap}@media(max-width:760px){.preset-row{grid-template-columns:1fr}}
+button{background:#292929;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 14px;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}#status{margin-top:9px;color:var(--muted);min-height:1.5em}
+#error{color:#ffb8b8}#history{background:#090909;border:1px solid var(--border);border-radius:8px;height:19vh;min-height:120px;overflow:auto;padding:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap}
+.bar{padding:2px 5px;border-radius:4px;line-height:1.65}.bar.play{background:var(--play)}.bar.next{background:var(--next)}.bar.partial{opacity:.8}.role{display:inline-block;min-width:4.6em;font-weight:700}.role.play-label{color:#fff}.role.next-label{color:#fff}
+code{font-family:ui-monospace,Consolas,monospace}
+</style>
+</head>
+<body><main>
+<h1>TB Rhythm Trainer</h1>
+<div class="meta">Version: 6f · Created: 2026-09-23 · Updated: 2026-09-25 · License: MIT</div>
+<div class="muted">A simple instrument practice tool that gradually reveals the next measure while you play the completed previous measure.</div>
+
+<section class="panel">
+<div class="help"><strong>Display:</strong><br>
+<code>PLAY</code> = the completed measure to play now. <code>NEXT</code> = the next measure currently being revealed.<br>
+<code>[root + separator + chord suffix]</code> = chord.
+Examples: <code>[C]</code> = C major, <code>[C5]</code> = C power chord,
+<code>[C4:5]</code> = C power chord rooted at C4.<br>
+A label such as <code>C</code> or <code>C5</code> by itself = single note.<br>
+<code>-</code> = rest. Depending on the instrument, you may let the previous sound sustain or mute it.
+</div>
+<div id="history"></div>
+</section>
+
+<section class="panel">
+<div class="buttons">
+<button id="runToggle">Start</button>
+<button id="pauseToggle" disabled>Pause (p)</button>
+<button id="clear">Clear history</button>
+<button id="reset">Reset settings</button>
+</div>
+<div class="help"><strong>Keyboard:</strong>
+<code>Space</code> = Start/Stop,
+<code>p</code> = Pause/Resume.
+Pause keeps the current position; Resume continues from the same measure.
+</div>
+<div id="status">Ready</div>
+
+<div class="preset-row">
+  <div>
+    <label for="presetSelect">Preset</label>
+    <select id="presetSelect" style="width:100%;background:#0d0d0d;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px">
+      <option value="">-- select preset --</option>
+    </select>
+    <div class="help">Presets are stored only in this browser's <code>localStorage</code>. Selecting a preset loads it immediately. The selected Preset and Preset name are also restored the next time you open the app.</div>
+  </div>
+  <div>
+    <label for="presetName">Preset name</label>
+    <input id="presetName" type="text" placeholder="e.g. Guitar - E blues">
+    <div class="preset-actions">
+      <button id="savePreset">Save preset</button>
+      <button id="deletePreset">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="buttons">
+  <button id="exportPresets">Export presets</button>
+  <button id="importPresets">Import presets</button>
+  <input id="importFile" type="file" accept=".json,application/json" hidden>
+</div>
+
+<div class="help">
+<strong>Preset storage / file access:</strong><br>
+Normal preset storage uses only this browser's <code>localStorage</code>.<br>
+Import reads only a JSON file that you explicitly select.<br>
+Export creates a standard browser download, with <code>tb-rhythm-trainer-presets.json</code> as the suggested filename.
+The browser decides how and where the file is saved, and may ask you to choose a location.<br>
+The app does not directly choose or write to arbitrary file paths.
+This app does not use the File System Access API and cannot browse or modify arbitrary files on your computer.
+</div>
+</section>
+
+<section class="panel">
+
+<div class="grid">
+<div><label>BPM</label><input id="bpm" type="number" min="1" value="120"><div class="help">Tempo. Default: <code>120</code>. The output interval is <code>60 / (BPM × subdivision)</code> seconds.</div></div>
+<div><label>Subdivision</label><input id="sub" type="number" min="1" value="1"><div class="help">Number of subdivisions per beat. Default: <code>1</code>.<br><code>1</code> = one event per beat, <code>2</code> = eighth-note subdivision, <code>3</code> = triplets, <code>4</code> = sixteenth-note subdivision.</div></div>
+<div><label>Pattern (0–7)</label><input id="pattern" value=""><div class="help">Pattern for one measure. If left blank, it becomes <code>4 × subdivision</code> copies of <code>2</code>.<br><code>0</code>: rest, and suppress the metronome click for that beat<br><code>1</code>: rest<br><code>2</code>: single note<br><code>3</code>: single note or rest<br><code>4</code>: chord<br><code>5</code>: chord or rest<br><code>6</code>: chord or single note<br><code>7</code>: chord, single note, or rest<br>The pattern length does not have to be a multiple of subdivision.<br><br>Example: <code>subdivision=2</code>, <code>pattern=41333331</code><br>→ Generates one measure in eighth-note subdivisions: chord / rest / note-or-rest / …</div></div>
+<div><label>Group</label><input id="group" type="number" min="0" value="0"><div class="help">Insert a <code>|</code> separator every N events. Default: <code>0</code>. <code>0</code> means no separators.</div></div>
+<div><label>Rest probability</label><input id="restProb" type="number" min="0" max="1" step="0.05" value="0.25"><div class="help">Probability of generating a rest for pattern values <code>3 / 5 / 7</code>. Default: <code>0.25</code> (25%). Pattern values <code>0 / 1</code> are always rests.</div></div>
+<div><label>Chord separator</label><input id="chordSep" value="" placeholder='blank / : / -'><div class="help">Optional text inserted between the root label and suffix. Leave blank for standard forms such as <code>[C7]</code>, or if you prefer to include punctuation directly in CHORD_SUFFIXES. For example, NOTES=<code>C4</code>, separator=<code>:</code>, suffix=<code>7</code> → <code>[C4:7]</code>.</div></div>
+</div>
+
+<div class="wide">
+<div>
+<label>NOTES (separated by spaces or line breaks)</label>
+<textarea id="notes">C C# D D# E F F# G G# A A# B</textarea>
+<div class="help">Labels used for single-note prompts and also as chord roots. They are treated as plain text, so you can restrict them to a scale, include octave numbers such as <code>C4 C#4 D4 ...</code>, or use non-pitched labels. For a drum kit, for example: <code>Kick Snare HiHat Tom1 Tom2 Crash Ride</code>.</div>
+</div>
+<div>
+<label>CHORD_SUFFIXES (one entry per line)</label>
+<textarea id="chords">(major)
+add9
+6
+6(9)
+7
+7b9
+9
+7#9
+11
+7#11
+7b13
+13
+7b5
+7#5
+M7
+M9
+M7#11
+M13
+m
+madd9
+m6
+m6(9)
+m7
+m9
+m11
+m13
+m7b5
+m7#5
+mM7
+mM9
+mM7(11)
+mM13
+aug
+aug7
+dim
+dim7
+sus4
+7sus4
+5
+sus2</textarea>
+<div class="help">One entry per line. <code>(major)</code> or <code>""</code> is treated as an empty suffix, producing <code>[C]</code>.<br>An entry without a root filter applies to all NOTES roots, for example <code>7</code>.<br>To restrict an entry to specific roots, use <code>suffix{root1, root2, ...}</code>, for example <code>7{E, A, B}</code>. Whitespace is allowed around the root filter and around comma-separated root labels inside <code>{...}</code>. Do not use whitespace inside the suffix itself or inside a root label. Root labels must match NOTES exactly.<br>E-blues-oriented example: NOTES=<code>E G A Bb B D</code>; CHORD_SUFFIXES=<code>7{E, A, B}</code>, <code>5</code>, <code>:bend{G, A, Bb, B, D}</code>.<br>Custom technique example: <code>:harmonic{E, A, B}</code>.<br>For example, <code>:harmonic { E , A , B }</code> is valid, while <code>natural harmonic { E, A }</code> is not. You may freely add, remove, or replace entries. With an empty Chord separator, punctuation can be included directly in the suffix.</div>
+</div>
+</div>
+
+
+</section>
+
+<div class="footer">TB Rhythm Trainer · Version 6f · Created 2026-09-23 · Updated 2026-09-25 · MIT License<br>Prototype / experimental software. Provided as-is, without warranty.</div>
+
+
+<script>
+(()=>{"use strict";
+const $=id=>document.getElementById(id);
+const E={bpm:$("bpm"),sub:$("sub"),pattern:$("pattern"),group:$("group"),restProb:$("restProb"),chordSep:$("chordSep"),notes:$("notes"),chords:$("chords"),runToggle:$("runToggle"),pauseToggle:$("pauseToggle"),clear:$("clear"),reset:$("reset"),presetSelect:$("presetSelect"),presetName:$("presetName"),savePreset:$("savePreset"),deletePreset:$("deletePreset"),exportPresets:$("exportPresets"),importPresets:$("importPresets"),importFile:$("importFile"),status:$("status"),history:$("history")};
+const KEY="tbRhythmTrainerSettingsV4";
+const PRESETS_KEY="tbRhythmTrainerPresetsV1";
+const PRESET_UI_KEY="tbRhythmTrainerPresetUiV1";
+const EXPORT_FILENAME="tb-rhythm-trainer-presets.json";
+const EXPORT_APP="TB Rhythm Trainer";
+const EXPORT_FORMAT_VERSION=1;
+const defaults={bpm:"120",sub:"1",pattern:"",group:"0",restProb:"0.25",chordSep:"",notes:"C C# D D# E F F# G G# A A# B",chords:E.chords.value};
+let S={running:false,paused:false,barNo:1,slot:0,current:null,previous:null,playing:null,timer:null,nextTime:0,audio:null,cfg:null};
+
+function toks(t){return t.split(/\s+/).map(x=>x.trim()).filter(Boolean)}
+function suffixEntries(t){
+  const lines=t
+    .split(/\r?\n/)
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  return lines.map(line=>{
+    const m=line.match(/^(.*?)\{([^{}]+)\}$/);
+    let suffix=line;
+    let roots=null;
+
+    if(m){
+      suffix=m[1].trim();
+      roots=m[2].split(",").map(x=>x.trim()).filter(Boolean);
+    }
+
+    if(suffix==="(major)"||suffix==='""'||suffix==="''")suffix="";
+
+    if(/\s/.test(suffix)){
+      throw new Error(`Spaces are not allowed in CHORD_SUFFIXES entries: "${line}"`);
+    }
+
+    return {suffix,roots};
+  });
+}
+function cfg(){
+  const c={bpm:+E.bpm.value,sub:+E.sub.value,group:+E.group.value,restProb:+E.restProb.value,chordSep:E.chordSep.value};
+  c.pattern=E.pattern.value.trim()||"2".repeat(4*c.sub); c.notes=toks(E.notes.value); c.suffixEntries=suffixEntries(E.chords.value);
+  if(!(c.bpm>0))throw Error("BPM must be greater than 0.");
+  if(!Number.isInteger(c.sub)||c.sub<1)throw Error("Subdivision must be an integer of 1 or greater.");
+  if(!Number.isInteger(c.group)||c.group<0)throw Error("Group must be an integer of 0 or greater.");
+  if(!(c.restProb>=0&&c.restProb<=1))throw Error("Rest probability must be between 0 and 1.");
+  if(!/^[0-7]+$/.test(c.pattern))throw Error("Pattern may contain only digits 0 through 7.");
+  if(/[2367]/.test(c.pattern)&&!c.notes.length)throw Error("This pattern requires NOTES.");
+  if(/[4567]/.test(c.pattern)&&(!c.notes.length||!c.suffixEntries.length))throw Error("This pattern requires both NOTES and CHORD_SUFFIXES.");
+  if(/[4567]/.test(c.pattern)){
+    const anyValid=c.notes.some(root=>c.suffixEntries.some(entry=>entry.roots===null||entry.roots.includes(root)));
+    if(!anyValid)throw Error("No valid root/suffix combination is available. Check NOTES and CHORD_SUFFIXES root filters.");
+  }
+  c.interval=60/(c.bpm*c.sub); return c;
+}
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const note=c=>choice(c.notes);
+function chord(c){
+  const validRoots=c.notes.filter(root=>c.suffixEntries.some(entry=>entry.roots===null||entry.roots.includes(root)));
+  if(!validRoots.length)throw new Error("No valid root/suffix combination is available. Check NOTES and CHORD_SUFFIXES root filters.");
+  const root=choice(validRoots);
+  const validEntries=c.suffixEntries.filter(entry=>entry.roots===null||entry.roots.includes(root));
+  const entry=choice(validEntries);
+  return `[${root}${c.chordSep}${entry.suffix}]`;
+}
+function item(ch,c){
+ if(ch==="0"||ch==="1")return "-"; if(ch==="2")return note(c);
+ if(ch==="3")return Math.random()<c.restProb?"-":note(c);
+ if(ch==="4")return chord(c); if(ch==="5")return Math.random()<c.restProb?"-":chord(c);
+ if(ch==="6")return Math.random()<.5?chord(c):note(c);
+ if(ch==="7"){if(Math.random()<c.restProb)return "-"; return Math.random()<.5?chord(c):note(c)}
+ return "-";
+}
+function clickOK(c,i){if(i%c.sub!==0)return false;return !c.pattern.slice(i,Math.min(i+c.sub,c.pattern.length)).includes("0")}
+async function audio(){if(!S.audio){const A=window.AudioContext||window.webkitAudioContext;if(!A)throw Error("This browser does not support the Web Audio API.");S.audio=new A()}if(S.audio.state==="suspended")await S.audio.resume()}
+function beep(when){const o=S.audio.createOscillator(),g=S.audio.createGain();o.frequency.setValueAtTime(1800,when);g.gain.setValueAtTime(.0001,when);g.gain.exponentialRampToValueAtTime(.32,when+.002);g.gain.exponentialRampToValueAtTime(.0001,when+.035);o.connect(g);g.connect(S.audio.destination);o.start(when);o.stop(when+.04)}
+const num=n=>String(n).padStart(4,"0");
+function scrollLatest(){requestAnimationFrame(()=>{E.history.scrollTop=E.history.scrollHeight})}
+function setRole(row,role){
+  if(!row)return;
+  const r=row.querySelector(".role");
+  if(!r)return;
+  r.textContent=role?role+" ":"";
+  r.classList.toggle("play-label",role==="PLAY");
+  r.classList.toggle("next-label",role==="NEXT");
+}
+function ensureRow(){
+  if(S.current)return;
+
+  /*
+    PLAY changes at the first event of the new measure, not when the
+    previous NEXT row finishes. This keeps the labels aligned with
+    the actual measure boundary.
+  */
+  if(S.playing){
+    S.playing.classList.remove("play");
+    setRole(S.playing,"");
+  }
+
+  if(S.previous){
+    S.previous.classList.remove("next");
+    S.previous.classList.add("play");
+    setRole(S.previous,"PLAY");
+    S.playing=S.previous;
+  }
+
+  const d=document.createElement("div");
+  d.className="bar next";
+
+  const role=document.createElement("span");
+  role.className="role next-label";
+  role.textContent="NEXT ";
+
+  const number=document.createElement("span");
+  number.textContent=`${num(S.barNo)} | `;
+
+  d.append(role,number);
+  E.history.append(d);
+  S.current=d;
+
+  scrollLatest();
+}
+function append(x){
+  ensureRow();
+  if(S.cfg.group>0&&S.slot>0&&S.slot%S.cfg.group===0)
+    S.current.append(document.createTextNode("| "));
+  S.current.append(document.createTextNode(x+"  "));
+  scrollLatest();
+}
+function finish(){
+  /*
+    Keep the completed row labeled NEXT until the first event of the
+    following measure. ensureRow() will switch it to PLAY at that time.
+  */
+  if(S.current){
+    S.previous=S.current;
+    S.current=null;
+  }
+
+  S.barNo++;
+  S.slot=0;
+  scrollLatest();
+}
+function process(){const c=S.cfg,ch=c.pattern[S.slot];if(clickOK(c,S.slot))beep(Math.max(S.audio.currentTime+.003,S.nextTime));append(item(ch,c));S.slot++;S.nextTime+=c.interval;if(S.slot>=c.pattern.length)finish()}
+function sched(){if(!S.running||S.paused)return;const now=S.audio.currentTime;while(S.running&&!S.paused&&S.nextTime<=now+.02)process()}
+function timerOn(){timerOff();S.timer=setInterval(sched,10)} function timerOff(){if(S.timer!==null){clearInterval(S.timer);S.timer=null}}
+function buttons(){E.runToggle.textContent=S.running?"Stop":"Start";E.pauseToggle.textContent=S.paused?"Resume (p)":"Pause (p)";E.pauseToggle.disabled=!S.running;}
+function status(t,err=false){E.status.textContent=t;E.status.style.color=err?"#ffb8b8":""}
+async function start(){try{S.cfg=cfg();await audio();S.running=true;S.paused=false;S.barNo=1;S.slot=0;S.current=null;S.previous=null;S.playing=null;E.history.innerHTML="";S.nextTime=S.audio.currentTime+.08;timerOn();buttons();status(`Running — interval ${S.cfg.interval.toFixed(4)} sec`)}catch(e){status(e.message||String(e),true)}}
+function pause(){if(!S.running||S.paused)return;S.paused=true;timerOff();buttons();status(`Paused — bar ${num(S.barNo)}, next slot ${S.slot+1}`)}
+async function resume(){if(!S.running||!S.paused)return;try{await audio();S.paused=false;S.nextTime=S.audio.currentTime+.08;timerOn();buttons();status("Running")}catch(e){status(e.message||String(e),true)}}
+function stop(){if(!S.running)return;timerOff();if(S.playing){S.playing.classList.remove("play");setRole(S.playing,"")}if(S.previous&&S.previous!==S.playing){S.previous.classList.remove("next");setRole(S.previous,"")}if(S.current){S.current.classList.remove("next");setRole(S.current,"")}S.running=false;S.paused=false;buttons();status("Stopped")}
+function apply(d){for(const k of ["bpm","sub","pattern","group","restProb","chordSep","notes","chords"])E[k].value=d[k]??defaults[k]}
+
+function currentSettings(){
+  return {
+    bpm:E.bpm.value,
+    sub:E.sub.value,
+    pattern:E.pattern.value,
+    group:E.group.value,
+    restProb:E.restProb.value,
+    chordSep:E.chordSep.value,
+    notes:E.notes.value,
+    chords:E.chords.value
+  };
+}
+
+function saveCurrentSettings(){
+  try{
+    localStorage.setItem(KEY,JSON.stringify(currentSettings()));
+  }catch{
+    // If localStorage is unavailable or full, continue without autosave.
+  }
+}
+
+function attachAutoSave(){
+  ["bpm","sub","pattern","group","restProb","chordSep","notes","chords"].forEach(k=>{
+    E[k].addEventListener("input",saveCurrentSettings);
+    E[k].addEventListener("change",saveCurrentSettings);
+  });
+}
+
+function savePresetUiState(){
+  try{
+    localStorage.setItem(PRESET_UI_KEY,JSON.stringify({
+      preset:E.presetSelect.value,
+      presetName:E.presetName.value
+    }));
+  }catch{
+    // If localStorage is unavailable or full, continue without autosave.
+  }
+}
+
+function restorePresetUiState(){
+  try{
+    const raw=localStorage.getItem(PRESET_UI_KEY);
+    if(!raw)return;
+    const state=JSON.parse(raw);
+    if(!state||typeof state!=="object")return;
+
+    const preset=typeof state.preset==="string"?state.preset:"";
+    const presetName=typeof state.presetName==="string"?state.presetName:"";
+
+    const presets=readPresets();
+    E.presetSelect.value=preset&&Object.prototype.hasOwnProperty.call(presets,preset)?preset:"";
+    E.presetName.value=presetName;
+  }catch{
+    // Ignore invalid or unavailable saved UI state.
+  }
+}
+
+function readPresets(){
+  try{
+    const raw=localStorage.getItem(PRESETS_KEY);
+    if(!raw)return {};
+    const obj=JSON.parse(raw);
+    return obj&&typeof obj==="object"&&!Array.isArray(obj)?obj:{};
+  }catch{
+    return {};
+  }
+}
+
+function writePresets(presets){
+  localStorage.setItem(PRESETS_KEY,JSON.stringify(presets));
+}
+
+function refreshPresetList(selectName=""){
+  const presets=readPresets();
+  const current=selectName||E.presetSelect.value;
+  E.presetSelect.innerHTML='<option value="">-- select preset --</option>';
+  Object.keys(presets).sort((a,b)=>a.localeCompare(b)).forEach(name=>{
+    const o=document.createElement("option");
+    o.value=name;
+    o.textContent=name;
+    E.presetSelect.append(o);
+  });
+  if(current&&Object.prototype.hasOwnProperty.call(presets,current)){
+    E.presetSelect.value=current;
+  }
+}
+
+function savePreset(){
+  const name=E.presetName.value.trim();
+  if(!name){status("Enter a preset name first.",true);return;}
+  const presets=readPresets();
+  presets[name]=currentSettings();
+  writePresets(presets);
+  refreshPresetList(name);
+  E.presetName.value=name;
+  savePresetUiState();
+  status(`Preset saved: ${name}`);
+}
+
+function loadPreset(){
+  const name=E.presetSelect.value;
+  if(!name){status("Select a preset to load.",true);return;}
+  const presets=readPresets();
+  if(!presets[name]){status("Preset not found.",true);refreshPresetList();return;}
+  apply(presets[name]);
+  saveCurrentSettings();
+  E.presetName.value=name;
+  savePresetUiState();
+  status(`Preset loaded: ${name}`);
+}
+
+function deletePreset(){
+  const name=E.presetSelect.value;
+  if(!name){status("Select a preset to delete.",true);return;}
+  const presets=readPresets();
+  delete presets[name];
+  writePresets(presets);
+  refreshPresetList();
+  E.presetName.value="";
+  savePresetUiState();
+  status(`Preset deleted: ${name}`);
+}
+
+function validSettingsObject(x){
+  if(!x||typeof x!=="object"||Array.isArray(x))return false;
+  const keys=["bpm","sub","pattern","group","restProb","chordSep","notes","chords"];
+  return keys.every(k=>Object.prototype.hasOwnProperty.call(x,k));
+}
+
+function exportPresets(){
+  const payload={
+    app:EXPORT_APP,
+    formatVersion:EXPORT_FORMAT_VERSION,
+    exportedAt:new Date().toISOString(),
+    presets:readPresets()
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=EXPORT_FILENAME;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),0);
+  status(`Preset file exported: ${EXPORT_FILENAME}`);
+}
+
+function importPresetsFromFile(file){
+  if(!file)return;
+  if(file.size>1024*1024){status("Import rejected: file is too large.",true);return;}
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(String(reader.result));
+      if(!data||data.app!==EXPORT_APP||data.formatVersion!==EXPORT_FORMAT_VERSION){
+        throw new Error("This is not a supported TB Rhythm Trainer preset file.");
+      }
+      if(!data.presets||typeof data.presets!=="object"||Array.isArray(data.presets)){
+        throw new Error("Invalid preset data.");
+      }
+      const incoming={};
+      for(const [name,settings] of Object.entries(data.presets)){
+        if(typeof name!=="string"||!name.trim()||!validSettingsObject(settings))continue;
+        incoming[name]=settings;
+      }
+      const merged={...readPresets(),...incoming};
+      writePresets(merged);
+      refreshPresetList();
+      status(`Imported ${Object.keys(incoming).length} preset(s). Existing names were overwritten.`);
+    }catch(err){
+      status(err.message||String(err),true);
+    }finally{
+      E.importFile.value="";
+    }
+  };
+  reader.onerror=()=>{
+    status("Could not read the selected file.",true);
+    E.importFile.value="";
+  };
+  reader.readAsText(file);
+}
+
+function load(){try{const x=localStorage.getItem(KEY);apply(x?JSON.parse(x):defaults)}catch{apply(defaults)}}
+function reset(){apply(defaults);saveCurrentSettings();status("Settings reset.")}
+E.runToggle.onclick=()=>{if(S.running)stop();else start()};
+E.pauseToggle.onclick=()=>{if(!S.running)return;if(S.paused)resume();else pause()};
+E.clear.onclick=()=>{E.history.innerHTML="";S.current=null;S.previous=null;S.playing=null};
+E.reset.onclick=reset;
+E.savePreset.onclick=savePreset;
+E.deletePreset.onclick=deletePreset;
+E.presetSelect.onchange=()=>{
+  E.presetName.value=E.presetSelect.value;
+  if(E.presetSelect.value)loadPreset();
+  else savePresetUiState();
+};
+E.presetName.addEventListener("input",savePresetUiState);
+E.presetName.addEventListener("change",savePresetUiState);
+E.exportPresets.onclick=exportPresets;
+E.importPresets.onclick=()=>E.importFile.click();
+E.importFile.onchange=()=>importPresetsFromFile(E.importFile.files[0]);
+addEventListener("keydown",ev=>{
+  if(ev.ctrlKey||ev.metaKey||ev.altKey)return;
+  const t=(document.activeElement?.tagName||"").toLowerCase();
+  if(t==="input"||t==="textarea")return;
+  if(ev.code==="Space"){ev.preventDefault();if(S.running)stop();else start();return;}
+  const k=ev.key.toLowerCase();
+  if(k==="p"){if(!S.running)return;if(S.paused)resume();else pause();}
+});
+load();attachAutoSave();refreshPresetList();restorePresetUiState();buttons();
+})();
+</script>
+</main></body></html>
